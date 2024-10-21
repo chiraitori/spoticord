@@ -1,11 +1,14 @@
 mod bot;
 mod commands;
 
+use axum::{Router, routing::get};
 use log::{error, info};
 use poise::Framework;
 use serenity::all::ClientBuilder;
 use songbird::SerenityInit;
 use spoticord_database::Database;
+use std::net::SocketAddr;
+use tokio::sync::oneshot;
 
 #[tokio::main]
 async fn main() {
@@ -60,8 +63,40 @@ async fn main() {
         }
     };
 
+    // Start HTTP server in a separate task
+    let (tx, rx) = oneshot::channel::<()>();
+    tokio::spawn(start_http_server(tx));
+
+    // Start the Discord bot
     if let Err(why) = client.start_autosharded().await {
-        error!("Fatal error occured during bot operations: {why}");
+        error!("Fatal error occurred during bot operations: {why}");
         error!("Bot will now shut down!");
     }
+
+    // Wait for the HTTP server task to finish (if ever)
+    rx.await.ok();
+}
+
+// Function to start the axum HTTP server
+async fn start_http_server(shutdown_signal: tokio::sync::oneshot::Sender<()>) {
+    // Define the route
+    let app = Router::new().route("/", get(hello_world));
+
+    // Define the address for the server
+    let addr = SocketAddr::from(([0, 0, 0, 0], 10000));
+    info!("Starting HTTP server on http://{}", addr);
+
+    // Start the server and listen for requests
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .with_graceful_shutdown(async {
+            shutdown_signal.await.ok();
+        })
+        .await
+        .unwrap();
+}
+
+// Handler for the "Hello World" route
+async fn hello_world() -> &'static str {
+    "Hello World"
 }
