@@ -41,7 +41,7 @@ serenity = "0.12.2"
 songbird = { version = "0.4.3", features = ["simd-json"] }
 tokio = { version = "1.39.3", features = ["full"] }
 rustls = { version = "0.23.13", features = ["aws-lc-rs"] }
-axum = "0.7.7"
+axum = "0.6"
 
 [profile.release]
 opt-level = 3
