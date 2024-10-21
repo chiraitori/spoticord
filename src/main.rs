@@ -1,7 +1,7 @@
 mod bot;
 mod commands;
 
-use axum::{Router, routing::get};
+use axum::{routing::get, Router, Server};
 use log::{error, info};
 use poise::Framework;
 use serenity::all::ClientBuilder;
@@ -90,7 +90,7 @@ async fn start_http_server(shutdown_signal: tokio::sync::oneshot::Sender<()>) {
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .with_graceful_shutdown(async {
-            shutdown_signal.await.ok();
+            shutdown_signal.send().ok();
         })
         .await
         .unwrap();
