@@ -1,36 +1,35 @@
 mod bot;
 mod commands;
-
-use axum::{routing::get, Router, Server};
 use log::{error, info};
 use poise::Framework;
 use serenity::all::ClientBuilder;
 use songbird::SerenityInit;
 use spoticord_database::Database;
-use std::net::SocketAddr;
-use tokio::sync::oneshot;
+use actix_web::{web, App, HttpResponse, HttpServer};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+async fn hello() -> HttpResponse {
+    HttpResponse::Ok().body("Hello World from Spoticord!")
+}
 
 #[tokio::main]
 async fn main() {
     // Force aws-lc-rs as default crypto provider
     // Since multiple dependencies either enable aws_lc_rs or ring, they cause a clash, so we have to
     // explicitly tell rustls to use the aws-lc-rs provider
-    _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    * = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     // Setup logging
     if std::env::var("RUST_LOG").is_err() {
         #[cfg(debug_assertions)]
-        std::env::set_var("RUST_LOG", "spoticord");
-
+        std::env::set_var("RUST_LOG", "spoticord,actix_web=info");
         #[cfg(not(debug_assertions))]
-        std::env::set_var("RUST_LOG", "spoticord=info");
+        std::env::set_var("RUST_LOG", "spoticord=info,actix_web=info");
     }
-
     env_logger::init();
-
     info!("Today is a good day!");
     info!(" - Spoticord");
-
     dotenvy::dotenv().ok();
 
     // Set up database
@@ -44,7 +43,7 @@ async fn main() {
 
     // Set up bot
     let framework = Framework::builder()
-        .setup(|ctx, ready, framework| Box::pin(bot::setup(ctx, ready, framework, database)))
+        .setup(|ctx, ready, framework| Box::pin(bot::setup(ctx, ready, framework, database.clone())))
         .options(bot::framework_opts())
         .build();
 
@@ -63,40 +62,26 @@ async fn main() {
         }
     };
 
-    // Start HTTP server in a separate task
-    let (tx, rx) = oneshot::channel::<()>();
-    tokio::spawn(start_http_server(tx));
+    // Start HTTP server
+    let http_server = HttpServer::new(move || {
+        App::new().route("/", web::get().to(hello))
+    })
+    .bind("127.0.0.1:10000")
+    .expect("Can not bind to port 10000");
 
-    // Start the Discord bot
-    if let Err(why) = client.start_autosharded().await {
-        error!("Fatal error occurred during bot operations: {why}");
-        error!("Bot will now shut down!");
-    }
+    // Run bot and HTTP server concurrently
+    let bot_task = tokio::spawn(async move {
+        if let Err(why) = client.start_autosharded().await {
+            error!("Fatal error occurred during bot operations: {why}");
+            error!("Bot will now shut down!");
+        }
+    });
 
-    // Wait for the HTTP server task to finish (if ever)
-    rx.await.ok();
-}
+    let http_task = tokio::spawn(async move {
+        info!("HTTP server running at http://localhost:10000");
+        http_server.run().await.expect("HTTP server failed");
+    });
 
-// Function to start the axum HTTP server
-async fn start_http_server(shutdown_signal: tokio::sync::oneshot::Sender<()>) {
-    // Define the route
-    let app = Router::new().route("/", get(hello_world));
-
-    // Define the address for the server
-    let addr = SocketAddr::from(([0, 0, 0, 0], 10000));
-    info!("Starting HTTP server on http://{}", addr);
-
-    // Start the server and listen for requests
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .with_graceful_shutdown(async {
-            shutdown_signal.send().ok();
-        })
-        .await
-        .unwrap();
-}
-
-// Handler for the "Hello World" route
-async fn hello_world() -> &'static str {
-    "Hello World"
+    // Wait for both tasks to complete
+    tokio::try_join!(bot_task, http_task).expect("Failed to run services");
 }
