@@ -24,10 +24,8 @@ RUN rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cargo build --release --target=x86_64-unknown-linux-gnu && \
-    RUSTFLAGS="-L /app/postgresql-${PGVER}/src/interfaces/libpq -C linker=aarch64-linux-gnu-gcc" cargo build --release --target=aarch64-unknown-linux-gnu
-
-# Copy the executables outside of /target as it'll get unmounted after this
-RUN cp /app/target/x86_64-unknown-linux-gnu/release/spoticord /app/x86_64 && \
+    RUSTFLAGS="-L /app/postgresql-${PGVER}/src/interfaces/libpq -C linker=aarch64-linux-gnu-gcc" cargo build --release --target=aarch64-unknown-linux-gnu && \
+    cp /app/target/x86_64-unknown-linux-gnu/release/spoticord /app/x86_64 && \
     cp /app/target/aarch64-unknown-linux-gnu/release/spoticord /app/aarch64
 
 # Runtime
@@ -36,13 +34,8 @@ FROM debian:bookworm-slim
 ARG TARGETPLATFORM
 ENV TARGETPLATFORM=${TARGETPLATFORM}
 
-# Add runtime dependencies and Nginx
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libpq-dev \
-    nginx \
-    supervisor \
-    && rm -rf /var/lib/apt/lists/*
+# Add extra runtime dependencies here
+RUN apt update && apt install -y ca-certificates libpq-dev nginx
 
 # Copy spoticord binaries from builder to /tmp so we can dynamically use them
 COPY --from=builder \
@@ -61,52 +54,17 @@ RUN if [ "${TARGETPLATFORM}" = "linux/amd64" ]; then \
 RUN rm -rvf /tmp/x86_64 /tmp/aarch64
 
 # Configure Nginx
-RUN rm /etc/nginx/sites-enabled/default
-COPY <<EOF /etc/nginx/conf.d/spoticord.conf
-server {
-    listen 80;
-    listen [::]:80;
-    server_name localhost;
-
-    location / {
-        proxy_pass http://127.0.0.1:10000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-    }
-}
-EOF
-
-# Configure supervisor
-COPY <<EOF /etc/supervisor/conf.d/supervisord.conf
-[supervisord]
-nodaemon=true
-user=root
-
-[program:nginx]
-command=/usr/sbin/nginx -g "daemon off;"
-autostart=true
-autorestart=true
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-
-[program:spoticord]
-command=/usr/local/bin/spoticord
-autostart=true
-autorestart=true
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-EOF
+RUN echo 'daemon off;' >> /etc/nginx/nginx.conf && \
+    rm /etc/nginx/sites-enabled/default && \
+    echo 'server { \
+    listen 80; \
+    location / { \
+        proxy_pass http://127.0.0.1:10000; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 
 # Expose both the original port and Nginx port
 EXPOSE 10000 80
 
-# Start supervisor to manage both processes
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Start both nginx and spoticord
+CMD service nginx start && /usr/local/bin/spoticord
