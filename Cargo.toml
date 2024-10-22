@@ -17,6 +17,7 @@ members = [
     "spoticord_session",
     "spoticord_utils",
     "spoticord_stats",
+    "spoticord_web",
 ]
 
 [features]
@@ -30,6 +31,7 @@ spoticord_player = { path = "./spoticord_player" }
 spoticord_session = { path = "./spoticord_session" }
 spoticord_utils = { path = "./spoticord_utils" }
 spoticord_stats = { path = "./spoticord_stats", optional = true }
+spoticord_web= { path = "./spoticord_web" }
 
 librespot = { git = "https://github.com/SpoticordMusic/librespot.git", default-features = false }
 anyhow = "1.0.86"
@@ -41,7 +43,7 @@ serenity = "0.12.2"
 songbird = { version = "0.4.3", features = ["simd-json"] }
 tokio = { version = "1.39.3", features = ["full"] }
 rustls = { version = "0.23.13", features = ["aws-lc-rs"] }
-actix-web = "4.3"
+
 
 [profile.release]
 opt-level = 3
