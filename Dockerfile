@@ -47,6 +47,14 @@ ENV TARGETPLATFORM=${TARGETPLATFORM}
 # Add extra runtime dependencies here
 RUN apt update && apt install -y ca-certificates libpq-dev nginx
 
+RUN DEBIAN_FRONTEND=noninteractive apt-get update -qq && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+    ca-certificates \
+    libpq-dev \
+    nginx \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "daemon off;" >> /etc/nginx/nginx.conf
+
 # Copy spoticord binaries from builder to /tmp so we can dynamically use them
 COPY --from=builder \
     /app/x86_64 /tmp/x86_64
