@@ -46,7 +46,6 @@ ENV TARGETPLATFORM=${TARGETPLATFORM}
 
 # Add extra runtime dependencies here
 RUN apt update && apt install -y ca-certificates libpq-dev nginx
-RUN mkdir /etc/nginx/sites-available/default
 
 # Copy spoticord binaries from builder to /tmp so we can dynamically use them
 COPY --from=builder \
