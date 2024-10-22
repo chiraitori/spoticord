@@ -46,14 +46,14 @@ ENV TARGETPLATFORM=${TARGETPLATFORM}
 
 # Add extra runtime dependencies here
 RUN apt update && apt install -y ca-certificates libpq-dev nginx
-
-COPY default /etc/nginx/sites-available/default
+RUN mkdir /etc/nginx/sites-available/default
 
 # Copy spoticord binaries from builder to /tmp so we can dynamically use them
 COPY --from=builder \
     /app/x86_64 /tmp/x86_64
 COPY --from=builder \
-    /app/aarch64 /tmp/aarch64
+    /app/aarch64 /tmp/aarch64    
+COPY default /etc/nginx/sites-available/default
 
 # Copy appropriate binary for target arch from /tmp
 RUN if [ "${TARGETPLATFORM}" = "linux/amd64" ]; then \
@@ -64,8 +64,5 @@ RUN if [ "${TARGETPLATFORM}" = "linux/amd64" ]; then \
 
 # Delete unused binaries
 RUN rm -rvf /tmp/x86_64 /tmp/aarch64
-
-# Expose port 10000 for the axum HTTP server
-EXPOSE 10000
 
 CMD service nginx start && /usr/local/bin/spoticord
